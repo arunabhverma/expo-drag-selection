@@ -1,88 +1,130 @@
-import {
-  Dimensions,
-  FlatListProps,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Dimensions, FlatListProps, StyleSheet, View } from "react-native";
 import React, { useCallback, useEffect, useState } from "react";
-import { Image } from "expo-image";
 import {
   FlatList,
   Gesture,
   GestureDetector,
 } from "react-native-gesture-handler";
 import Animated, {
+  ReduceMotion,
   runOnJS,
+  scrollTo,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from "react-native-reanimated";
-
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@react-navigation/native";
 type SelectableFlatListProps<T> = FlatListProps<T>;
 
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const WIDTH = Dimensions.get("window").width;
 
-const RenderItem = ({ item, index, indexValue }) => {
-  console.log("indexValue", indexValue);
-
-  let padding = {
-    padding: indexValue.min <= index + 1 && indexValue.max >= index + 1 ? 1 : 0,
-  };
-
-  return (
-    <Animated.View style={padding}>
-      <Image
-        source={{ uri: item.download_url }}
-        style={{ width: WIDTH / 3, aspectRatio: 1 }}
-      />
-    </Animated.View>
-  );
-};
-
 const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
+  const theme = useTheme();
+  const animatedRef = useAnimatedRef();
   const containerWidth = useSharedValue(0);
   const containerHeight = useSharedValue(0);
   const offset = useSharedValue({ x: 0, y: 0 });
-
-  const [min, setMin] = useState(0);
-  const [max, setMax] = useState(0);
-
   const indexValue = useSharedValue({ min: 0, max: 0 });
+  const scrollOffset = useSharedValue(0);
+  const isDragStart = useSharedValue(false);
+  let scrollViewLength =
+    (Math.ceil(props.data?.length / 3) * WIDTH) / 3 - containerHeight.value;
+
+  const [min, setMin] = useState(null);
+  const [max, setMax] = useState(null);
+
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollOffset.value = event.contentOffset.y;
+  });
+
+  useDerivedValue(() => {
+    if (offset.value.y > containerHeight.value * 0.9) {
+      let scrollOffsetValue =
+        scrollOffset.value >= scrollViewLength
+          ? scrollOffset.value
+          : scrollOffset.value + 10;
+      scrollTo(animatedRef, 0, scrollOffsetValue, false);
+    }
+    if (offset.value.y < containerHeight.value * 0.1) {
+      let scrollOffsetValue =
+        scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10;
+      scrollTo(animatedRef, 0, scrollOffsetValue, false);
+    }
+  });
 
   const getValue = useDerivedValue(() => {
     let numCol = 3;
     let itemWidth = containerWidth.value / numCol;
     let itemHeight = itemWidth;
 
-    let col = Math.ceil(offset.value.x / itemWidth);
-    let row = Math.ceil(offset.value.y / itemHeight);
+    let col = Math.ceil(offset.value.x / itemWidth) || 1;
+    let row =
+      Math.ceil((offset.value.y + scrollOffset.value) / itemHeight) || 1;
 
     let count = (row - 1) * 3 + col;
+
     return count;
   });
 
-  const pan = Gesture.Pan()
+  const dragGesture = Gesture.Pan()
     .onStart((e) => {
-      offset.value = {
-        x: offset.value.x + e.translationX,
-        y: offset.value.y + e.translationY,
-      };
+      if (isDragStart.value) {
+        offset.value = {
+          x: offset.value.x + e.translationX,
+          y: offset.value.y + e.translationY,
+        };
 
-      runOnJS(setMin)(getValue.value);
-
-      //   indexValue.value.min = getValue.value;
+        let minVal = getValue.value;
+        indexValue.value.min = minVal;
+        runOnJS(setMin)(minVal);
+        runOnJS(setMax)(minVal);
+      }
     })
     .onChange((e) => {
-      offset.value = {
-        x: offset.value.x + e.changeX,
-        y: offset.value.y + e.changeY,
-      };
-      runOnJS(setMax)(getValue.value);
-      //   indexValue.value.max = getValue.value;
+      if (isDragStart.value) {
+        offset.value = {
+          x: offset.value.x + e.changeX,
+          y: offset.value.y + e.changeY,
+        };
+        let maxVal = getValue.value;
+        indexValue.value.max = maxVal;
+        runOnJS(setMax)(maxVal);
+      }
     })
-    .onFinalize(() => {});
+    .onFinalize(() => {
+      isDragStart.value = false;
+    });
+
+  const longPressGesture = Gesture.LongPress().onStart((e) => {
+    runOnJS(setMin)(null);
+    runOnJS(setMax)(null);
+    offset.value = {
+      x: e.x,
+      y: e.y,
+    };
+
+    let numCol = 3;
+    let itemWidth = containerWidth.value / numCol;
+    let itemHeight = itemWidth;
+
+    let col = Math.ceil(e.x / itemWidth) || 1;
+    let row = Math.ceil((e.y + scrollOffset.value) / itemHeight) || 1;
+
+    let count = (row - 1) * 3 + col;
+
+    isDragStart.value = true;
+
+    indexValue.value.max = count;
+    runOnJS(setMin)(count);
+    runOnJS(setMax)(count);
+  });
 
   const onLayout = useCallback((e) => {
     const containerLayout = e.nativeEvent.layout;
@@ -99,42 +141,67 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
     };
   });
 
-  //   const animatedStyle = useAnimatedStyle(() => {
-  //     return {
-  //       padding: padding,
-  //       backgroundColor: "blue",
-  //     };
-  //   });
+  const renderItem = useCallback(
+    ({ item, index }) => {
+      const itemIndex = index + 1;
+      const active =
+        min && max
+          ? (min <= itemIndex && itemIndex <= max) ||
+            (max <= itemIndex && itemIndex <= min)
+          : false;
+      return (
+        <Animated.View style={{ width: WIDTH / 3, aspectRatio: 1 }}>
+          {active && (
+            <View
+              style={{
+                position: "absolute",
+                backgroundColor: "rgba(255,255,255,0.5)",
+                zIndex: 10,
+                ...StyleSheet.absoluteFill,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: "white",
+                  position: "absolute",
+                  width: 25,
+                  height: 25,
+                  bottom: 5,
+                  right: 5,
+                  borderRadius: 25,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  overflow: "hidden",
+                }}
+              >
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={theme.colors.primary}
+                  // color={"white"}
+                />
+              </View>
+            </View>
+          )}
+          <Image source={{ uri: item.download_url }} style={{ flex: 1 }} />
+        </Animated.View>
+      );
+    },
+    [min, max]
+  );
+
+  const composed = Gesture.Simultaneous(dragGesture, longPressGesture);
 
   return (
-    <View
-      style={{ flexGrow: 1, padding: 10, backgroundColor: "red" }}
-      onLayout={onLayout}
-    >
-      <GestureDetector gesture={pan}>
-        <View>
-          <Animated.View
-            style={[
-              {
-                width: 100,
-                aspectRatio: 1,
-                backgroundColor: "blue",
-                position: "absolute",
-                zIndex: 10,
-              },
-              animatedDragStyle,
-            ]}
-          />
-          <Animated.FlatList
-            {...props}
-            // renderItem={({ item, index }) =>
-            //   props.renderItem({ item, index, indexValue })
-            // }
-            renderItem={({ item, index }) => (
-              <RenderItem item={item} index={index} indexValue={{ min, max }} />
-            )}
-          />
-        </View>
+    <View style={{ flexGrow: 1 }} onLayout={onLayout}>
+      <GestureDetector gesture={composed}>
+        <AnimatedFlatList
+          //   const animatedRef = useAnimatedRef();
+          ref={animatedRef}
+          {...props}
+          onScroll={scrollHandler}
+          renderItem={renderItem}
+        />
       </GestureDetector>
     </View>
   );
