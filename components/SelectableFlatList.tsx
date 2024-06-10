@@ -18,7 +18,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@react-navigation/native";
 type SelectableFlatListProps<T> = FlatListProps<T>;
 
@@ -39,6 +39,7 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
 
   const [min, setMin] = useState(null);
   const [max, setMax] = useState(null);
+  const [isSelect, setIsSelect] = useState(false);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollOffset.value = event.contentOffset.y;
@@ -100,6 +101,7 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
     })
     .onFinalize(() => {
       isDragStart.value = false;
+      runOnJS(setIsSelect)(false);
     });
 
   const longPressGesture = Gesture.LongPress().onStart((e) => {
@@ -120,6 +122,7 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
     let count = (row - 1) * 3 + col;
 
     isDragStart.value = true;
+    runOnJS(setIsSelect)(true);
 
     indexValue.value.max = count;
     runOnJS(setMin)(count);
@@ -151,35 +154,36 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
           : false;
       return (
         <Animated.View style={{ width: WIDTH / 3, aspectRatio: 1 }}>
-          {active && (
+          {isSelect && (
             <View
               style={{
                 position: "absolute",
-                backgroundColor: "rgba(255,255,255,0.5)",
+                backgroundColor: active
+                  ? "rgba(255,255,255,0.5)"
+                  : "transparent",
                 zIndex: 10,
                 ...StyleSheet.absoluteFill,
               }}
             >
               <View
                 style={{
-                  backgroundColor: "white",
+                  backgroundColor: active
+                    ? theme.colors.primary
+                    : "transparent",
                   position: "absolute",
-                  width: 25,
-                  height: 25,
+                  borderWidth: 2,
+                  borderColor: "white",
+                  width: 24,
+                  height: 24,
                   bottom: 5,
                   right: 5,
-                  borderRadius: 25,
+                  borderRadius: 24,
                   justifyContent: "center",
                   alignItems: "center",
                   overflow: "hidden",
                 }}
               >
-                <Ionicons
-                  name="checkmark-circle"
-                  size={24}
-                  color={theme.colors.primary}
-                  // color={"white"}
-                />
+                {active && <Feather name="check" size={18} color="white" />}
               </View>
             </View>
           )}
