@@ -1,4 +1,10 @@
-import { Dimensions, FlatListProps, StyleSheet, View } from "react-native";
+import {
+  Button,
+  Dimensions,
+  FlatListProps,
+  StyleSheet,
+  View,
+} from "react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   FlatList,
@@ -6,9 +12,12 @@ import {
   GestureDetector,
 } from "react-native-gesture-handler";
 import Animated, {
+  cancelAnimation,
+  Easing,
   ReduceMotion,
   runOnJS,
   scrollTo,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -20,9 +29,9 @@ import Animated, {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@react-navigation/native";
+
 type SelectableFlatListProps<T> = FlatListProps<T>;
 
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const WIDTH = Dimensions.get("window").width;
 
 const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
@@ -34,6 +43,12 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
   const indexValue = useSharedValue({ min: 0, max: 0 });
   const scrollOffset = useSharedValue(0);
   const isDragStart = useSharedValue(false);
+
+  useAnimatedReaction(
+    () => scrollOffset.value,
+    (scrolling) => scrollTo(animatedRef, 0, scrolling, false)
+  );
+
   let scrollViewLength =
     (Math.ceil(props.data?.length / 3) * WIDTH) / 3 - containerHeight.value;
 
@@ -44,20 +59,114 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
     scrollOffset.value = event.contentOffset.y;
   });
 
+  // useDerivedValue(() => {
+  //   if (offset.value.y > containerHeight.value * 0.9) {
+  //     // let scrollOffsetValue =
+  //     //   scrollOffset.value >= scrollViewLength
+  //     //     ? scrollOffset.value
+  //     //     : scrollOffset.value + 10;
+  //     scrollOffset.value = withTiming(
+  //       scrollOffset.value >= scrollViewLength
+  //         ? scrollOffset.value
+  //         : scrollOffset.value + 10,
+  //       { duration: 1500 }
+  //     );
+  //     // scrollTo(animatedRef, 0, scrollOffsetValue, false);
+  //   } else if (offset.value.y < containerHeight.value * 0.1) {
+  //     scrollOffset.value = withTiming(
+  //       scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10,
+  //       { duration: 1500 }
+  //     );
+  //     // let scrollOffsetValue =
+  //     //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10;
+  //     // scrollTo(animatedRef, 0, scrollOffsetValue, false);
+  //   } else {
+  //     cancelAnimation(scrollOffset);
+  //   }
+  // });
+
   useDerivedValue(() => {
-    if (offset.value.y > containerHeight.value * 0.9) {
-      let scrollOffsetValue =
-        scrollOffset.value >= scrollViewLength
-          ? scrollOffset.value
-          : scrollOffset.value + 10;
-      scrollTo(animatedRef, 0, scrollOffsetValue, false);
-    }
-    if (offset.value.y < containerHeight.value * 0.1) {
-      let scrollOffsetValue =
-        scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10;
-      scrollTo(animatedRef, 0, scrollOffsetValue, false);
+    let numCol = 3;
+    let itemWidth = containerWidth.value / numCol;
+    let itemHeight = itemWidth;
+    if (isDragStart.value) {
+      if (offset.value.y > containerHeight.value * 0.9) {
+        let col = Math.ceil(offset.value.x / itemWidth) || 1;
+        let row =
+          Math.ceil((offset.value.y + scrollOffset.value) / itemHeight) || 1;
+
+        let count = (row - 1) * 3 + col;
+
+        indexValue.value.max = count;
+        runOnJS(setMax)(count);
+
+        // return count;
+        scrollOffset.value = withTiming(scrollViewLength, {
+          duration: 1500,
+          easing: Easing.linear,
+          // reduceMotion: ReduceMotion.System,
+        });
+      } else if (offset.value.y < containerHeight.value * 0.1) {
+        let col = Math.ceil(offset.value.x / itemWidth) || 1;
+        let row =
+          Math.ceil((offset.value.y + scrollOffset.value) / itemHeight) || 1;
+
+        let count = (row - 1) * 3 + col;
+
+        indexValue.value.max = count;
+        runOnJS(setMax)(count);
+        scrollOffset.value = withTiming(0, {
+          duration: 1500,
+          easing: Easing.linear,
+          // reduceMotion: ReduceMotion.System,
+        });
+      } else {
+        cancelAnimation(scrollOffset);
+      }
     }
   });
+
+  // useAnimatedReaction(
+  //   () => offset.value.y,
+  //   (value) => {
+  //     // console.log("va", value);
+  //     if (offset.value.y > containerHeight.value * 0.9) {
+  //       console.log("down");
+  //       // let scrollOffsetValue =
+  //       //   scrollOffset.value >= scrollViewLength
+  //       //     ? scrollOffset.value
+  //       //     : scrollOffset.value + 10;
+  //       // scrollOffset.value = withTiming(
+  //       //   scrollOffset.value >= scrollViewLength
+  //       //     ? scrollOffset.value
+  //       //     : scrollOffset.value + 10,
+  //       //   { duration: 1500 }
+  //       // );
+  //       // scrollOffset.value = withTiming(scrollViewLength, {
+  //       //   duration: 300,
+  //       // });
+  //       scrollOffset.value = scrollViewLength;
+  //       // scrollTo(animatedRef, 0, withTiming(scrollViewLength, {duration: 1500}), false);
+  //     } else if (offset.value.y < containerHeight.value * 0.1) {
+  //       // scrollOffset.value = withTiming(0, {
+  //       //   duration: 300,
+  //       // });
+  //       console.log("up");
+  //       scrollOffset.value = withTiming(0, { duration: 300 });
+
+  //       // scrollOffset.value = withTiming(
+  //       //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10,
+  //       //   { duration: 1500 }
+  //       // );
+  //       // let scrollOffsetValue =
+  //       //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10;
+  //       // scrollTo(animatedRef, 0, scrollOffsetValue, false);
+  //     } else {
+  //       // cancelAnimation(scrollOffset);
+  //     }
+  //   },
+  //   [scrollViewLength, scrollOffset.value]
+  // );
 
   const getValue = useDerivedValue(() => {
     let numCol = 3;
@@ -96,8 +205,76 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
         let maxVal = getValue.value;
         indexValue.value.max = maxVal;
         runOnJS(setMax)(maxVal);
+
+        // console.log("offset", offset.value.y, containerHeight.value * 0.9);
+
+        // if (offset.value.y > containerHeight.value * 0.9) {
+        //   console.log("down");
+        //   // let scrollOffsetValue =
+        //   //   scrollOffset.value >= scrollViewLength
+        //   //     ? scrollOffset.value
+        //   //     : scrollOffset.value + 10;
+        //   // scrollOffset.value = withTiming(
+        //   //   scrollOffset.value >= scrollViewLength
+        //   //     ? scrollOffset.value
+        //   //     : scrollOffset.value + 10,
+        //   //   { duration: 1500 }
+        //   // );
+        //   scrollOffset.value = withTiming(scrollViewLength, {
+        //     duration: 100,
+        //   });
+        //   // scrollTo(animatedRef, 0, withTiming(scrollViewLength, {duration: 1500}), false);
+        // } else if (offset.value.y < containerHeight.value * 0.1) {
+        //   scrollOffset.value = withTiming(0, {
+        //     duration: 100,
+        //   });
+        //   // console.log("up");
+        //   // scrollOffset.value = withTiming(
+        //   //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10,
+        //   //   { duration: 1500 }
+        //   // );
+        //   // let scrollOffsetValue =
+        //   //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10;
+        //   // scrollTo(animatedRef, 0, scrollOffsetValue, false);
+        // } else {
+        //   // cancelAnimation(scrollOffset);
+        // }
       }
     })
+    // .onUpdate((e) => {
+    //   console.log("offset.value", offset.value.y > containerHeight.value * 0.9);
+    //   if (offset.value.y > containerHeight.value * 0.9) {
+    //     //   console.log("down");
+    //     //   // let scrollOffsetValue =
+    //     //   //   scrollOffset.value >= scrollViewLength
+    //     //   //     ? scrollOffset.value
+    //     //   //     : scrollOffset.value + 10;
+    //     //   // scrollOffset.value = withTiming(
+    //     //   //   scrollOffset.value >= scrollViewLength
+    //     //   //     ? scrollOffset.value
+    //     //   //     : scrollOffset.value + 10,
+    //     //   //   { duration: 1500 }
+    //     //   // );
+    //     scrollOffset.value = withTiming(scrollViewLength, {
+    //       duration: 1500,
+    //     });
+    //     //   // scrollTo(animatedRef, 0, withTiming(scrollViewLength, {duration: 1500}), false);
+    //     // } else if (offset.value.y < containerHeight.value * 0.1) {
+    //     //   scrollOffset.value = withTiming(0, {
+    //     //     duration: 100,
+    //     //   });
+    //     //   // console.log("up");
+    //     //   // scrollOffset.value = withTiming(
+    //     //   //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10,
+    //     //   //   { duration: 1500 }
+    //     //   // );
+    //     //   // let scrollOffsetValue =
+    //     //   //   scrollOffset.value <= 0 ? 0 : scrollOffset.value - 10;
+    //     //   // scrollTo(animatedRef, 0, scrollOffsetValue, false);
+    //     // } else {
+    //     //   // cancelAnimation(scrollOffset);
+    //   }
+    // })
     .onFinalize(() => {
       isDragStart.value = false;
     });
@@ -194,11 +371,17 @@ const SelectableFlatList = <T,>(props: SelectableFlatListProps<T>) => {
 
   return (
     <View style={{ flexGrow: 1 }} onLayout={onLayout}>
+      {/* <Button
+        title="ON"
+        onPress={() => {
+          scrollOffset.value = scrollViewLength;
+        }}
+      /> */}
       <GestureDetector gesture={composed}>
-        <AnimatedFlatList
-          //   const animatedRef = useAnimatedRef();
-          ref={animatedRef}
+        <Animated.FlatList
           {...props}
+          ref={animatedRef}
+          scrollEventThrottle={16}
           onScroll={scrollHandler}
           renderItem={renderItem}
         />
